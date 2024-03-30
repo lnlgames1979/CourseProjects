@@ -1,0 +1,11 @@
+streamlit
+pandas
+matplotlib
+wordcloud
+joblib
+underthesea
+regex
+gensim
+numpy
+scikit-learn 
+plotly
