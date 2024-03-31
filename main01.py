@@ -238,11 +238,10 @@ class DoAnMonHoc:
         st.header('User base (Collaborative Filtering) - apply Surprise SVD') #-------------------------------------
         with open(self.paths[self.iProject] + self.modelFiles[self.iProject][2], 'rb') as file:
             svd_alg = pickle.load(file)
-        self.data_df= pd.read_csv(self.paths[self.iProject] + self.dataFiles[self.iProject], header= 0, delimiter= '\t')
+        self.data_df= pd.read_csv(self.paths[self.iProject] + self.dataFiles[self.iProject], header= 0)
         self.data_df= self.data_df[:10_000] # giảm bớt theo số lượng dữ liệu đã train
-        # st.dataframe(self.data_df)
-        userIdCol= 1
-        userID_df= pd.DataFrame(self.data_df[self.data_df.columns[userIdCol]].unique())
+        st.dataframe(self.data_df)
+        userID_df= pd.DataFrame(self.data_df['user_id'].unique())
         # st.dataframe(userID_df)
         st.write(f'There are {len(userID_df)} users.')
         userID = st.selectbox('Select a userID:', userID_df[0])
