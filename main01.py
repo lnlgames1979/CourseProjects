@@ -10,6 +10,8 @@ import regex as re
 
 from gensim import corpora, models, similarities
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+import pickle
 
 from sklearn.cluster import KMeans
 import plotly.express as px
@@ -138,7 +140,7 @@ class DoAnMonHoc:
         model_path = self.paths[self.iProject] + 'svc_model.joblib'
         predictModel= joblib.load(model_path)
         
-        self.comment= st.text_input("Express your feeling:", "so so")
+        self.comment= st.text_input("Express your feeling:", "tuyệt vời")
         if st.button("Submit"):
             self.cmtLabel= self.VN_preprocess(self.comment)
             self.cmtLabel= tfidf.transform([self.cmtLabel])
@@ -193,12 +195,12 @@ class DoAnMonHoc:
     def prj2(self):
         self.info_df = pd.read_csv(self.paths[self.iProject] + self.infoFiles[self.iProject], index_col= 0)
         st.write("Loaded data:")
-        st.write(self.info_df)
+        st.dataframe(self.info_df)
         st.write(f'There has {len(self.info_df)} items.')
         
-        st.header('Apply GenSim')
+        st.header('Content base - apply GenSim') #-------------------------------------------------------------
         dictionary = corpora.Dictionary.load(self.paths[self.iProject] + 'Dict_gs.dict')
-        tfidf_model = models.TfidfModel.load(self.paths[self.iProject] + 'tfidf_gs.model')
+        tfidf_model = models.TfidfModel.load(self.paths[self.iProject] + self.modelFiles[self.iProject][0])
         # Load corpus
         tfidf_corpus = np.load(self.paths[self.iProject] + 'tfidf_corpus.npy', allow_pickle=True)
         # Load ma trận tương tự cosine
@@ -216,13 +218,53 @@ class DoAnMonHoc:
             n_most_similar_indices = sims.argsort()[::-1][:n]
             st.write(f'Similar item indexes: {n_most_similar_indices}')
             
-            st.write(self.info_df.iloc[n_most_similar_indices])
+            st.dataframe(self.info_df.iloc[n_most_similar_indices])
+            
         st.write('-'*50)
-        st.header('Apply Cosine similarity')
+        st.header('Content base - apply Cosine similarity') #-------------------------------------------------------------
+        tf, tfidf_matrix = joblib.load(self.paths[self.iProject] + self.modelFiles[self.iProject][1])
+        self.searchText = st.text_input("Enter a text to search:", "áo thun việt nam", key="search_text_input")
+        m = st.slider("Number of similar:", min_value=1, max_value=20, value=5, key="similar_slider")
+        if st.button("Submit", key="submit_button"):
+            sc_preprocessed= [' '.join(self.preprocess_text(self.searchText))] # list các chuỗi đã xử lý
+            
+            tf_ws_texts = tf.transform(sc_preprocessed)
+            # Tính ma trận tương tự cosine giữa các câu
+            cosine_similarities = cosine_similarity(tf_ws_texts, tfidf_matrix)
+            similar_indices = cosine_similarities[0].argsort()[::-1][:m]  # Lấy m câu tương tự, bỏ qua câu gốc
+            st.dataframe(self.info_df.iloc[similar_indices])
         
-        
+        st.write('-'*50)
+        st.header('User base (Collaborative Filtering) - apply Surprise SVD') #-------------------------------------
+        with open(self.paths[self.iProject] + self.modelFiles[self.iProject][2], 'rb') as file:
+            svd_alg = pickle.load(file)
+        self.data_df= pd.read_csv(self.paths[self.iProject] + self.dataFiles[self.iProject], header= 0, delimiter= '\t')
+        self.data_df= self.data_df[:10_000] # giảm bớt theo số lượng dữ liệu đã train
+        # st.dataframe(self.data_df)
+        userIdCol= 1
+        userID_df= pd.DataFrame(self.data_df[self.data_df.columns[userIdCol]].unique())
+        # st.dataframe(userID_df)
+        st.write(f'There are {len(userID_df)} users.')
+        userID = st.selectbox('Select a userID:', userID_df[0])
+        n= st.slider("Number of product:", min_value=1, max_value=10, value=5)
+        if userID != "":
+            userID= int(userID)
+            products_df = self.data_df[["product_id"]]
+            products_df= products_df.drop_duplicates() # xóa bỏ các sản phẩm trùng lắp
+            products_df['EstimateScore'] = products_df['product_id'].apply(lambda x: svd_alg.predict(userID, x).est) # est: get EstimateScore
+            # Sắp xếp rating dự đoán giảm dần
+            products_df = products_df.sort_values(by=['EstimateScore'], ascending=False)[:n]
+            st.write(f'Các ID sản phẩm được đề xuất cho userID {userID}')
+            st.dataframe(products_df)
+            
+        average_ratings = self.data_df.groupby('product_id')['rating'].mean().reset_index()
+        # products_df[products_df.EstimateScore >= 5].head(n)
+        average_ratings= average_ratings.sort_values(by='rating', ascending=False)[:n]
+        st.write(f'Các ID sản phẩm được đề xuất cho khách mới')
+        st.dataframe(average_ratings)
+
     def prj3(self):
-        self.data_df= pd.read_csv(self.paths[self.iProject] + self.infoFiles[self.iProject], index_col= 0)
+        self.data_df= pd.read_csv(self.paths[self.iProject] + self.dataFiles[self.iProject], index_col= 0)
         st.write("Loaded data:")
         st.write(self.data_df)
         st.write(f'There has {len(self.data_df)} items.')
@@ -305,12 +347,12 @@ class DoAnMonHoc:
         self.btnCaptions = ["1. Sentiment snalysis", "2. Recommendation system", "3. Customer segmentation"]
         self.mnuItems = ["Introduction", "Experiment", "Model information"]
         self.infoFiles = ["restaurant_overview.csv", "cleaned_P2Data.csv", "cleaned_P3Data.csv"]
-        self.dataFiles = ["cleaned_P1data.csv", "cleaned_P2Data.csv", "cleaned_P3Data.csv"]
+        self.dataFiles = ["cleaned_P1data.csv", "Products_ThoiTrangNam_rating_raw.csv", "cleaned_P3Data.csv"]
         self.modelFiles= [['svc_model.joblib', 'nb_model.joblib', 'rf_model.joblib', 'lr_model.joblib', 'gb_model.joblib'], 
-                          ['tfidf_gs.model', 'Cosine.pkl'], 
+                          ['tfidf_gs.model', 'Cosine.pkl', 'svd_model.pkl'], 
                           []]
         self.modelNames= [['SVC model', 'Naive Bayes model', 'Random Forest model', 'Logistic Regression model', 'Gradient Booting model'], 
-                          ['GenSim', 'Cosine similarity'], 
+                          ['GenSim', 'Cosine similarity', 'Surprise'], 
                           ['RFM', 'K-means', 'Hierarchical clustering']]
         
         # Khởi tạo biến lưu trữ chỉ số được chọn
@@ -375,7 +417,8 @@ Customer segmentation helps businesses gain insights into their consumers, enabl
             ], 
             [
                 "GenSim is an open-source library for unsupervised topic modeling and natural language processing, using modern statistical machine learning. It's designed to handle large text collections, using efficient algorithms to discover semantic structure in text data.",
-                "Cosine similarity is a metric used to measure the similarity between two vectors by computing the cosine of the angle between them. It's commonly used in information retrieval, document similarity analysis, and recommendation systems. In the context of natural language processing, cosine similarity is often applied to vectorized representations of text documents, such as TF-IDF vectors or word embeddings."
+                "Cosine similarity is a metric used to measure the similarity between two vectors by computing the cosine of the angle between them. It's commonly used in information retrieval, document similarity analysis, and recommendation systems. In the context of natural language processing, cosine similarity is often applied to vectorized representations of text documents, such as TF-IDF vectors or word embeddings.", 
+                "Surprise is a Python library designed for building recommendation systems. It provides various algorithms for collaborative filtering, including Singular Value Decomposition (SVD), k-Nearest Neighbors (k-NN), and Non-negative Matrix Factorization (NMF)"
             ], 
             [
                 "RFM (Recency, Frequency, Monetary) analysis is a marketing technique used to analyze customer behavior by categorizing them into segments based on their transaction history. Recency represents the last purchase date, Frequency is the number of purchases made by the customer, and Monetary represents the total amount spent.",
