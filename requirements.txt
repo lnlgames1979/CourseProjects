@@ -9,4 +9,3 @@ gensim
 numpy
 scikit-learn 
 plotly
-pickle
