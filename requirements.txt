@@ -1,11 +1,12 @@
-streamlit
+gensim==4.2.0
+scipy==1.7.3
+streamlit==1.10.0
 pandas
 matplotlib
 wordcloud
 joblib
 underthesea
 regex
-gensim
 numpy
 scikit-learn 
 plotly
